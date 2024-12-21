@@ -1,0 +1,199 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Gestion des Commandes{% endblock %}
+
+{% block body %}*
+<style>
+        .total-box {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+</style>
+<div class="container mt-4">
+{% if not client %}
+
+   {{ form_start(form, {'attr': {'class': 'row g-3 align-items-center'}}) }}
+<div class="d-flex align-items-center gap-2">
+    <div>
+        {{ form_label(form.telephone, 'Téléphone', {'label_attr': {'class': 'form-label mb-0'}}) }}
+    </div>
+
+    <div>
+        {{ form_widget(form.telephone, {'attr': {'class': 'form-control', 'placeholder': 'Téléphone'}}) }}
+    </div>
+
+    <div>
+        {{ form_widget(form.submit, {'attr': {'class': 'btn btn-primary'}}) }}
+    </div>
+</div>
+
+<div class="text-danger">
+    {{ form_errors(form.telephone) }}
+</div>
+
+
+{{ form_end(form) }}
+
+
+{% if form.telephone.vars.value is not empty and not client %}
+            <div class="alert alert-warning mt-3">Client non trouvé. La commande est désactivée.</div>
+        {% endif %}
+
+
+ {% else %}
+       
+    
+
+        <div class="card mb-4 shadow-sm">
+    <div class="card-body">
+        <div class="d-flex flex-wrap gap-3">
+            <div class="border p-2 rounded flex-fill">
+                <input type="text" class="form-control border-0" value="{{ client.nom }} {{ client.prenom }}" readonly>
+            </div>
+            <div class="border p-2 rounded flex-fill">
+                <input type="text" class="form-control border-0" value="{{ client.telephone }}" readonly>
+            </div>
+            <div class="border p-2 rounded flex-fill">
+                <input type="text" class="form-control border-0" value="{{ client.adresse }}" readonly>
+            </div>
+        </div>
+    </div>
+</div>
+
+        <form id="commandeForm" method="post" action="{{ path('app_save_commande') }}">
+            <input type="hidden" name="client_id" value="{{ client.id ?? '' }}">
+            <input type="hidden" id="articles" name="articles">
+
+            <div class="card shadow-sm">
+                <div class="card-header bg-success text-white">
+                    <h6 class="mb-0">Ajouter des Articles</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <select id="article" name="article" class="form-select">
+                                <option value="" selected disabled>Choisir un article</option>
+                                {% for article in articles %}
+                                    <option value="{{ article.id }}" data-prix="{{ article.prix }}" data-stock="{{ article.qteStock }}">
+                                        {{ article.nomArticle }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <input type="number" id="quantite" name="quantite" class="form-control" min="1" placeholder="Quantité">
+                        </div>
+                        <div class="col-md-2">
+                            <input type="number" id="prix" name="prix" class="form-control" placeholder="Prix">
+                        </div>
+                        <div class="col-md-2">
+                            <button type="button" id="addArticle" class="btn btn-success">Ajouter</button>
+                        </div>
+                    </div>
+                    {% for message in app.flashes('error') %}
+                        <div class="alert alert-danger">
+                            {{ message|raw }}
+                        </div>
+                    {% endfor %}
+
+                    <table class="table table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Article</th>
+                                <th>Prix</th>
+                                <th>Quantité</th>
+                                <th>Montant</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="commandeArticles"></tbody>
+                    </table>
+
+                    <div class="d-flex justify-content-end mt-3">
+                        <p class="fw-bold me-3">Total : <span id="total" class="text-success">0</span> CFA</p>
+                        <button type="submit" class="btn btn-success">Valider la Commande</button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const addArticleButton = document.getElementById('addArticle');
+    const commandeArticlesTable = document.getElementById('commandeArticles');
+    const totalElement = document.getElementById('total');
+    const articlesInput = document.getElementById('articles');
+    let total = 0;
+    let selectedArticles = [];
+
+    addArticleButton.addEventListener('click', () => {
+        const articleSelect = document.getElementById('article');
+        const quantiteInput = document.getElementById('quantite');
+        const prixInput = document.getElementById('prix');
+
+        const articleId = articleSelect.value;
+        const articleNom = articleSelect.options[articleSelect.selectedIndex].text;
+        const quantite = parseInt(quantiteInput.value, 10);
+        const prix = parseFloat(prixInput.value);
+
+        if (!articleId || quantite <= 0 || prix <= 0 || isNaN(quantite) || isNaN(prix)) {
+            alert('Veuillez remplir tous les champs correctement.');
+            return;
+        }
+
+        const montant = quantite * prix;
+        total += montant;
+
+        const article = {
+            id: articleId,
+            name: articleNom,
+            quantite: quantite,
+            prix: prix,
+            montant: montant
+        };
+
+        selectedArticles.push(article);
+        renderTable();
+    });
+
+    function renderTable() {
+        commandeArticlesTable.innerHTML = '';
+        total = 0;
+
+        selectedArticles.forEach((article, index) => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${article.name}</td>
+                <td>${article.prix.toFixed(2)}</td>
+                <td><input type="number" value="${article.quantite}" data-index="${index}" class="quantite form-control" min="1"></td>
+                <td class="montant">${(article.prix * article.quantite).toFixed(2)}</td>
+                <td><button class="removeArticle btn btn-danger btn-sm" data-index="${index}">Supprimer</button></td>
+            `;
+
+            row.querySelector('.quantite').addEventListener('input', (e) => {
+                const newQuantity = parseInt(e.target.value, 10) || 1;
+                const index = e.target.dataset.index;
+                selectedArticles[index].quantite = newQuantity;
+                selectedArticles[index].montant = selectedArticles[index].prix * newQuantity;
+                renderTable();
+            });
+
+            row.querySelector('.removeArticle').addEventListener('click', (e) => {
+                const index = e.target.dataset.index;
+                selectedArticles.splice(index, 1);
+                renderTable();
+            });
+
+            commandeArticlesTable.appendChild(row);
+            total += article.montant;
+        });
+
+        totalElement.textContent = total.toFixed(2);
+        articlesInput.value = JSON.stringify(selectedArticles);
+    }
+});
+</script>
+{% endblock %}
